@@ -1,0 +1,21 @@
+{
+  "name": "MESANA · Ceremonial Naval",
+  "short_name": "Mesana",
+  "description": "Portal naval de ceremonial y tradiciones - A.E. Juan Sebastián de Elcano",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#070d1e",
+  "theme_color": "#070d1e",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
