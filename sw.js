@@ -1,5 +1,5 @@
 // SW MESANA (pack sin conexión)
-const CACHE_NAME = 'mesana-v69';
+const CACHE_NAME = 'mesana-v70';
 const ASSETS = ["./", "./index.html", "./manifest.json", "./privacidad.html", "./Escudo_Armas_Juan_Sebastian_Elcano.png", "./badge_1_chifle.png", "./badge_2_buques.png", "./badge_3_izado.png", "./badge_4_autoridades.png", "./badge_5_musica.png", "./badge_6_tierra.png", "./escudo_elcano_header.png", "./icon-192.png", "./icon-512.png", "./logo.jpg"];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE_NAME).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
