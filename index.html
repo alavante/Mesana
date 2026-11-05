@@ -241,11 +241,18 @@
       </a>
     </main>
 
-      <!-- PACK SIN CONEXIÓN -->
-      <div id="packBox" style="margin-top:14px; padding:10px 12px; background:#0b152d; border:1px solid #1e3a8a; border-radius:10px; font-size:11.5px; color:#cbd5e1; text-align:center;">
-        <div id="packEstado" style="font-weight:700;">Pack sin conexión: comprobando…</div>
-        <div style="height:6px; background:#1e293b; border-radius:3px; margin:8px 0; overflow:hidden;"><div id="packBarra" style="height:100%; width:0%; background:#38bdf8; transition:width .3s;"></div></div>
-        <button id="packBtn" onclick="instalarPackIAB(true)" style="background:#0c4a6e; border:1px solid #0284c7; color:#e0f2fe; padding:8px 14px; border-radius:8px; font-size:12px; font-weight:800; cursor:pointer;">⬇ Descargar / continuar pack</button>
+                  <!-- DESCARGA PARA FUNCIONAMIENTO SIN CONEXIÓN -->
+      <div id="packBox" style="margin-top:10px; padding:8px 10px; background:#0b152d; border:1px solid #1e3a8a; border-radius:8px; text-align:center;">
+        <div style="font-size:12px; font-weight:800; color:#38bdf8;">📥 Descarga para funcionamiento sin conexión</div>
+        <div style="font-size:10.5px; color:#94a3b8; margin:2px 0 6px;">Use wifi y deje la pantalla abierta.</div>
+        <div style="height:6px; background:#1e293b; border-radius:3px; overflow:hidden;"><div id="packBarra" style="height:100%; width:0%; background:#38bdf8; transition:width .3s;"></div></div>
+        <div id="packEstado" style="margin:5px 0 6px; font-size:11.5px; font-weight:700; color:#f87171;">⚠ Sin descargar: no funcionará sin conexión</div>
+        <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
+          <button id="packBtnE" onclick="instalarPackIAB('e')" style="flex:1 1 45%; background:#0c4a6e; border:1px solid #0284c7; color:#e0f2fe; padding:7px 4px; border-radius:7px; font-size:12px; font-weight:800; cursor:pointer;">▶ Esenciales (16 MB)</button>
+          <button id="packBtnR" onclick="instalarPackIAB('r')" style="flex:1 1 45%; background:#14532d; border:1px solid #16a34a; color:#dcfce7; padding:7px 4px; border-radius:7px; font-size:12px; font-weight:800; cursor:pointer;">▶ Resto · recomendado (21 MB)</button>
+          <button id="packStop" onclick="pararPackIAB()" disabled style="flex:1; background:#1e293b; border:1px solid #475569; color:#cbd5e1; padding:7px 4px; border-radius:7px; font-size:12px; font-weight:800; cursor:pointer; opacity:.5;">■ Parar</button>
+          <button id="packDel" onclick="borrarPackIAB()" title="Borrar lo descargado" style="background:#1e293b; border:1px solid #475569; color:#cbd5e1; padding:7px 10px; border-radius:7px; font-size:12px; font-weight:800; cursor:pointer;">🗑</button>
+        </div>
       </div>
 
 
@@ -258,15 +265,36 @@
   </div>
 <script>
 const PACK_MODULOS = ["izado_base", "CHIFLE_VIRTUAL_PWA", "Honores_buques", "honores_autoridades", "musica_militar"];
-let packOcupado = false;
-function packTxt(t){ var e=document.getElementById('packEstado'); if(e) e.textContent=t; }
+const ROJO='#f87171', AMBAR='#fbbf24', VERDE='#4ade80', GRIS='#cbd5e1';
+let packOcupado = false, packParar = false, packCtl = null;
+function packTxt(t,c){ var e=document.getElementById('packEstado'); if(e){ e.textContent=t; e.style.color=c||GRIS; } }
 function packBar(p){ var b=document.getElementById('packBarra'); if(b) b.style.width=Math.max(0,Math.min(100,p))+'%'; }
+function packBotones(corriendo){
+  ['packBtnE','packBtnR','packDel'].forEach(function(id){ var x=document.getElementById(id); if(x){ x.disabled=corriendo; x.style.opacity=corriendo?'.5':'1'; } });
+  var b=document.getElementById('packStop'); if(b){ b.disabled=!corriendo; b.style.opacity=corriendo?'1':'.5'; }
+}
+function packResumen(){
+  var e=localStorage.getItem('packE')==='ok', r=localStorage.getItem('packR')==='ok';
+  if(e&&r){ packTxt('✔ Descarga completa para funcionamiento sin conexión',VERDE); packBar(100); }
+  else if(e){ packTxt('Esenciales listos. Falta el resto (recomendado).',AMBAR); packBar(43); }
+  else if(r){ packTxt('Falta descargar los esenciales.',AMBAR); packBar(57); }
+  else{ packTxt('⚠ Sin descargar: no funcionará sin conexión',ROJO); packBar(0); }
+}
 function esperar(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
+function pararPackIAB(){ packParar=true; if(packCtl) packCtl.abort(); packTxt('Parando…',AMBAR); }
+async function borrarPackIAB(){
+  if(packOcupado) return;
+  if(!confirm('¿Borrar lo descargado?')) return;
+  try{ var ks=await caches.keys(); await Promise.all(ks.filter(function(k){ return k.indexOf('pack-')===0 || k==='uso-audio-v1'; }).map(function(k){ return caches.delete(k); })); }catch(_){}
+  ['packE','packR','packIAB'].forEach(function(k){ localStorage.removeItem(k); });
+  packResumen();
+}
 async function bajarFichero(cache, url){
-  var intentos=7;
-  for (var i=0;i<intentos;i++){
-    if (!navigator.onLine){ await esperar(3000); continue; }
-    var ctl=new AbortController();
+  for (var i=0;i<7;i++){
+    if (packParar) return false;
+    if (!navigator.onLine){ packTxt('Sin señal. Esperando…',AMBAR); await esperar(3000); continue; }
+    packCtl=new AbortController();
+    var ctl=packCtl;
     var t=setTimeout(function(){ ctl.abort(); },90000);
     try{
       var same = new URL(url,location.href).origin===location.origin;
@@ -274,22 +302,24 @@ async function bajarFichero(cache, url){
       if(!r.ok) throw new Error('http '+r.status);
       var buf=await r.clone().arrayBuffer();
       var esperado=parseInt(r.headers.get('content-length')||'0',10);
-      if(esperado && buf.byteLength!==esperado) throw new Error('incompleto');
+      if(esperado && !r.headers.get('content-encoding') && buf.byteLength!==esperado) throw new Error('incompleto');
       await cache.put(url,new Response(buf,{status:200,headers:r.headers}));
       clearTimeout(t); return true;
-    }catch(e){ clearTimeout(t); await esperar(Math.min(30000,1500*Math.pow(2,i))); }
+    }catch(e){ clearTimeout(t); if(packParar) return false; await esperar(Math.min(8000,1000*(i+1))); }
   }
   return false;
 }
-async function instalarPackIAB(forzar){
+async function instalarPackIAB(niv){
   if(packOcupado) return;
-  if(!('serviceWorker' in navigator) || !window.caches){ packTxt('Este navegador no admite uso sin conexión'); return; }
-  packOcupado=true;
-  var btn=document.getElementById('packBtn'); if(btn) btn.disabled=true;
+  if(!('serviceWorker' in navigator) || !window.caches){ packTxt('Este navegador no lo permite',ROJO); return; }
+  var cx=navigator.connection;
+  if(cx && cx.type==='cellular' && localStorage.getItem('packIAB')!==niv && !confirm('Usa datos móviles. ¿Continuar?')) return;
+  packOcupado=true; packParar=false; packBotones(true);
+  localStorage.setItem('packIAB',niv);
   try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(_){}
   try{
-    var listas=[], total=0;
-    packTxt('Preparando lista de ficheros…');
+    packTxt('Preparando…',GRIS);
+    var listas=[];
     for (var i=0;i<PACK_MODULOS.length;i++){
       var m=PACK_MODULOS[i];
       var base=new URL('../'+m+'/',location.href);
@@ -299,41 +329,43 @@ async function instalarPackIAB(forzar){
       var cache=await caches.open(pj.cache);
       var pend=[];
       for (var k=0;k<pj.files.length;k++){
-        var f=pj.files[k]; var url=new URL(f.u,base).href;
-        total+=f.s||0;
+        var f=pj.files[k]; if(f.n!==niv) continue;
+        var url=new URL(f.u,base).href;
         if(!(await cache.match(url,{ignoreVary:true}))) pend.push({url:url,s:f.s||0});
       }
-      listas.push({m:m,cache:cache,pend:pend,base:base});
+      listas.push({m:m,cache:cache,pend:pend});
     }
-    var pendTotal=0; listas.forEach(function(l){ l.pend.forEach(function(x){ pendTotal+=x.s; }); });
-    var hecho=0, fallos=0, ficheros=0;
-    var totalFich=listas.reduce(function(a,l){ return a+l.pend.length; },0);
-    if(totalFich===0){ packTxt('✔ Pack completo, listo para uso sin conexión'); packBar(100); localStorage.setItem('packIAB','ok'); }
-    else{
+    var pendTotal=0, totalFich=0;
+    listas.forEach(function(l){ l.pend.forEach(function(x){ pendTotal+=x.s; totalFich++; }); });
+    var hecho=0, fallos=0;
+    if(totalFich>0){
+      outer:
       for (var a=0;a<listas.length;a++){
         var L=listas[a];
         for (var b=0;b<L.pend.length;b++){
+          if(packParar) break outer;
           var it=L.pend[b];
-          packTxt('Descargando '+L.m.replace(/_/g,' ')+' · '+(ficheros+1)+'/'+totalFich+' · '+(hecho/1048576).toFixed(1)+' de '+(pendTotal/1048576).toFixed(1)+' MB');
+          packTxt((niv==='e'?'Esenciales: ':'Resto: ')+Math.round(pendTotal? hecho/pendTotal*100 : 0)+' % ('+Math.round(hecho/1048576)+'/'+Math.round(pendTotal/1048576)+' MB)',GRIS);
           var ok=await bajarFichero(L.cache,it.url);
-          if(ok){ hecho+=it.s; } else { fallos++; }
-          ficheros++;
-          packBar(pendTotal? hecho/pendTotal*100 : ficheros/totalFich*100);
+          if(ok){ hecho+=it.s; } else if(!packParar){ fallos++; }
+          packBar(pendTotal? hecho/pendTotal*100 : 0);
         }
       }
-      if(fallos){ packTxt('Pack incompleto: faltan '+fallos+' ficheros. Pulse reintentar cuando haya mejor señal.'); localStorage.removeItem('packIAB'); }
-      else{ packTxt('✔ Pack completo, listo para uso sin conexión'); packBar(100); localStorage.setItem('packIAB','ok'); }
     }
     for (var c=0;c<PACK_MODULOS.length;c++){
       try{ await navigator.serviceWorker.register('../'+PACK_MODULOS[c]+'/sw.js',{scope:'../'+PACK_MODULOS[c]+'/'}); }catch(_){}
     }
-  }catch(e){ packTxt('No se pudo preparar el pack. Reintente con conexión.'); }
-  packOcupado=false; if(btn) btn.disabled=false;
+    if(packParar){ packTxt('Detenida ('+Math.round(pendTotal? hecho/pendTotal*100:0)+' %). Pulse de nuevo para continuar.',AMBAR); }
+    else if(fallos){ packTxt('Incompleta: faltan '+fallos+'. Pulse de nuevo.',AMBAR); }
+    else { localStorage.setItem(niv==='e'?'packE':'packR','ok'); localStorage.removeItem('packIAB'); packResumen(); }
+  }catch(e){ packTxt('Sin conexión. Pulse de nuevo.',AMBAR); }
+  packOcupado=false; packBotones(false);
 }
-window.addEventListener('online',function(){ if(localStorage.getItem('packIAB')!=='ok') instalarPackIAB(false); });
+window.addEventListener('online',function(){ var n=localStorage.getItem('packIAB'); if(n && !packOcupado) instalarPackIAB(n); });
 window.addEventListener('load',function(){
-  if(navigator.onLine) setTimeout(function(){ instalarPackIAB(false); },1500);
-  else packTxt(localStorage.getItem('packIAB')==='ok' ? '✔ Pack listo para uso sin conexión' : 'Sin conexión: el pack aún no está descargado');
+  packBotones(false); packResumen();
+  var n=localStorage.getItem('packIAB');
+  if(n && navigator.onLine) setTimeout(function(){ instalarPackIAB(n); },1200);
 });
 </script>
 </body>
