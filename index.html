@@ -280,6 +280,27 @@ function packResumen(){
   else if(r){ packTxt('Falta descargar los esenciales.',AMBAR); packBar(57); }
   else{ packTxt('⚠ Sin descargar: no funcionará sin conexión',ROJO); packBar(0); }
 }
+async function verificarPack(){
+  var res={e:true,r:true,hay:false};
+  try{
+    var meta=await caches.open('pack-meta-v1');
+    for (var i=0;i<PACK_MODULOS.length;i++){
+      var m=PACK_MODULOS[i];
+      var base=new URL('../'+m+'/',location.href);
+      var rm=await meta.match(new URL('pack.json',base).href);
+      if(!rm){ res.e=false; res.r=false; continue; }
+      res.hay=true;
+      var pj=await rm.json();
+      var cache=await caches.open(pj.cache);
+      for (var k=0;k<pj.files.length;k++){
+        var f=pj.files[k];
+        if(!(await cache.match(new URL(f.u,base).href,{ignoreVary:true}))) res[f.n]=false;
+      }
+    }
+  }catch(_){ res.e=false; res.r=false; }
+  localStorage.setItem('packE',res.e?'ok':'no'); localStorage.setItem('packR',res.r?'ok':'no');
+  return res;
+}
 function esperar(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
 function pararPackIAB(){ packParar=true; if(packCtl) packCtl.abort(); packTxt('Parando…',AMBAR); }
 async function borrarPackIAB(){
@@ -326,6 +347,7 @@ async function instalarPackIAB(niv){
       var r=await fetch(new URL('pack.json',base),{cache:'reload'});
       if(!r.ok) throw new Error('pack.json '+m);
       var pj=await r.json();
+      try{ var mc=await caches.open('pack-meta-v1'); await mc.put(new URL('pack.json',base).href,new Response(JSON.stringify(pj),{headers:{'Content-Type':'application/json'}})); }catch(_){}
       var cache=await caches.open(pj.cache);
       var pend=[];
       for (var k=0;k<pj.files.length;k++){
@@ -357,15 +379,23 @@ async function instalarPackIAB(niv){
     }
     if(packParar){ packTxt('Detenida ('+Math.round(pendTotal? hecho/pendTotal*100:0)+' %). Pulse de nuevo para continuar.',AMBAR); }
     else if(fallos){ packTxt('Incompleta: faltan '+fallos+'. Pulse de nuevo.',AMBAR); }
-    else { localStorage.setItem(niv==='e'?'packE':'packR','ok'); localStorage.removeItem('packIAB'); packResumen(); }
+    else {
+      var v=await verificarPack();
+      if(v[niv]){ localStorage.removeItem('packIAB'); packResumen(); }
+      else { packTxt('Faltan ficheros. Pulse de nuevo.',AMBAR); }
+    }
   }catch(e){ packTxt('Sin conexión. Pulse de nuevo.',AMBAR); }
   packOcupado=false; packBotones(false);
 }
 window.addEventListener('online',function(){ var n=localStorage.getItem('packIAB'); if(n && !packOcupado) instalarPackIAB(n); });
 window.addEventListener('load',function(){
-  packBotones(false); packResumen();
-  var n=localStorage.getItem('packIAB');
-  if(n && navigator.onLine) setTimeout(function(){ instalarPackIAB(n); },1200);
+  packBotones(false);
+  packTxt('Comprobando lo descargado…',GRIS);
+  verificarPack().then(function(){
+    packResumen();
+    var n=localStorage.getItem('packIAB');
+    if(n && navigator.onLine) setTimeout(function(){ instalarPackIAB(n); },1200);
+  });
 });
 </script>
 </body>
