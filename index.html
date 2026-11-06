@@ -266,9 +266,9 @@
 <script>
 const PACK_MODULOS = ["izado_base", "CHIFLE_VIRTUAL_PWA", "Honores_buques", "honores_autoridades", "musica_militar"];
 const ROJO='#f87171', AMBAR='#fbbf24', VERDE='#4ade80', GRIS='#cbd5e1';
-let packOcupado = false, packParar = false, packCtl = null;
+let packOcupado = false, packParar = false, packCtl = null, packUltimo = 0, packOculto = false;
 function packTxt(t,c){ var e=document.getElementById('packEstado'); if(e){ e.textContent=t; e.style.color=c||GRIS; } }
-function packBar(p){ var b=document.getElementById('packBarra'); if(b) b.style.width=Math.max(0,Math.min(100,p))+'%'; }
+function packBar(p){ packUltimo=Date.now(); var b=document.getElementById('packBarra'); if(b) b.style.width=Math.max(0,Math.min(100,p))+'%'; }
 function packBotones(corriendo){
   ['packBtnE','packBtnR','packDel'].forEach(function(id){ var x=document.getElementById(id); if(x){ x.disabled=corriendo; x.style.opacity=corriendo?'.5':'1'; } });
   var b=document.getElementById('packStop'); if(b){ b.disabled=!corriendo; b.style.opacity=corriendo?'1':'.5'; }
@@ -302,7 +302,7 @@ async function verificarPack(){
   return res;
 }
 function esperar(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
-function pararPackIAB(){ packParar=true; if(packCtl) packCtl.abort(); packTxt('Parando…',AMBAR); }
+function pararPackIAB(){ packParar=true; localStorage.removeItem('packIAB'); if(packCtl) packCtl.abort(); packTxt('Parando…',AMBAR); }
 async function borrarPackIAB(){
   if(packOcupado) return;
   if(!confirm('¿Borrar lo descargado?')) return;
@@ -335,7 +335,7 @@ async function instalarPackIAB(niv){
   if(!('serviceWorker' in navigator) || !window.caches){ packTxt('Este navegador no lo permite',ROJO); return; }
   var cx=navigator.connection;
   if(cx && cx.type==='cellular' && localStorage.getItem('packIAB')!==niv && !confirm('Usa datos móviles. ¿Continuar?')) return;
-  packOcupado=true; packParar=false; packBotones(true);
+  packOcupado=true; packParar=false; packUltimo=Date.now(); packBotones(true);
   localStorage.setItem('packIAB',niv);
   try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(_){}
   try{
@@ -344,7 +344,8 @@ async function instalarPackIAB(niv){
     for (var i=0;i<PACK_MODULOS.length;i++){
       var m=PACK_MODULOS[i];
       var base=new URL('../'+m+'/',location.href);
-      var r=await fetch(new URL('pack.json',base),{cache:'reload'});
+      var c0=new AbortController(); packCtl=c0; var t0=setTimeout(function(){ c0.abort(); },20000);
+      var r=await fetch(new URL('pack.json',base),{cache:'reload',signal:c0.signal}); clearTimeout(t0);
       if(!r.ok) throw new Error('pack.json '+m);
       var pj=await r.json();
       try{ var mc=await caches.open('pack-meta-v1'); await mc.put(new URL('pack.json',base).href,new Response(JSON.stringify(pj),{headers:{'Content-Type':'application/json'}})); }catch(_){}
@@ -387,7 +388,29 @@ async function instalarPackIAB(niv){
   }catch(e){ packTxt('Sin conexión. Pulse de nuevo.',AMBAR); }
   packOcupado=false; packBotones(false);
 }
-window.addEventListener('online',function(){ var n=localStorage.getItem('packIAB'); if(n && !packOcupado) instalarPackIAB(n); });
+function reanudarPackIAB(){
+  var n=localStorage.getItem('packIAB');
+  if(!n || !navigator.onLine) return;
+  if(!packOcupado){ packTxt('Continuando la descarga…',AMBAR); instalarPackIAB(n); return; }
+  packParar=true; if(packCtl) packCtl.abort();
+  var espera=0;
+  var t=setInterval(function(){
+    espera++;
+    if(!packOcupado || espera>20){
+      clearInterval(t); packOcupado=false; packParar=false;
+      packTxt('Descarga interrumpida. Continuando…',AMBAR);
+      instalarPackIAB(n);
+    }
+  },500);
+}
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='hidden'){ packOculto=true; return; }
+  if(packOculto){ packOculto=false; if(packOcupado || localStorage.getItem('packIAB')) reanudarPackIAB(); }
+});
+setInterval(function(){
+  if(packOcupado && !packParar && document.visibilityState==='visible' && Date.now()-packUltimo>100000) reanudarPackIAB();
+},15000);
+window.addEventListener('online',function(){ if(localStorage.getItem('packIAB') && !packOcupado) reanudarPackIAB(); });
 window.addEventListener('load',function(){
   packBotones(false);
   packTxt('Comprobando lo descargado…',GRIS);
